@@ -45,23 +45,17 @@ mod tests {
     let result = Rsa2048::elem(1_048_576);
     let proof = Poe::<Rsa2048>::prove(&base, &exp, &result);
     assert!(Poe::verify(&base, &exp, &result, &proof));
-    assert!(
-      proof
-        == Poe {
-          Q: Rsa2048::elem(1)
-        }
-    );
+    assert_eq!(proof, Poe {
+      Q: Rsa2048::elem(1)
+    });
 
     // 2^35 = 34359738368
     let exp_2 = int(35);
     let result_2 = Rsa2048::elem(34_359_738_368u64);
     let proof_2 = Poe::<Rsa2048>::prove(&base, &exp_2, &result_2);
     assert!(Poe::verify(&base, &exp_2, &result_2, &proof_2));
-    assert!(
-      proof_2
-        == Poe {
-          Q: Rsa2048::elem(1)
-        }
-    );
+    assert_eq!(proof_2, Poe {
+      Q: Rsa2048::elem(1)
+    });
   }
 }

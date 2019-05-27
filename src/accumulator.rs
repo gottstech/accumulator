@@ -388,6 +388,9 @@ impl<G: UnknownOrderGroup, T: Clone + Hash> Witness<G, T> {
 mod tests {
   use super::*;
   use crate::group::{ClassGroup, Rsa2048};
+  extern crate chrono;
+  use self::tests::chrono::prelude::Utc;
+  const NANO_TO_MILLIS: f64 = 1.0 / 1_000_000.0;
 
   fn new_acc<G: UnknownOrderGroup, T: Hash + Eq>(data: &[T]) -> Accumulator<G, T> {
     Accumulator::<G, T>::empty().add(data)
@@ -417,25 +420,86 @@ mod tests {
   fn test_add<G: UnknownOrderGroup>() {
     let acc = new_acc::<G, &'static str>(&["a", "b"]);
     let new_elems = ["c", "d"];
+
+    let start = Utc::now().timestamp_nanos();
     let (acc_new, proof) = acc.add_with_proof(&new_elems);
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("add spent time:\t{}ms",dur_ms);
+
+    println!("test_add - acc_new: {:#?}\nproof: {:#?}", acc_new, proof);
     let acc_expected = G::exp(
       &G::unknown_order_elem(),
       &prime_hash_product(&["a", "b", "c", "d"]),
     );
     assert!(acc_new.value == acc_expected);
+    let start = Utc::now().timestamp_nanos();
     assert!(acc_new.verify_membership_batch(&new_elems, &proof));
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("verify_membership_batch spent time:\t{}ms",dur_ms);
   }
 
   test_all_groups!(test_delete, test_delete_rsa2048, test_delete_class,);
   fn test_delete<G: UnknownOrderGroup>() {
+    let start = Utc::now().timestamp_nanos();
     let acc_0 = new_acc::<G, &'static str>(&["a", "b"]);
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("new_acc spent time:\t{:.3}ms",dur_ms);
+
+    let start = Utc::now().timestamp_nanos();
     let (acc_1, c_proof) = acc_0.clone().add_with_proof(&["c"]);
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("add_with_proof spent time:\t{:.3}ms",dur_ms);
+
+    let start = Utc::now().timestamp_nanos();
     let (acc_2, proof) = acc_1
       .clone()
       .delete_with_proof(&[("c", c_proof.witness)])
       .expect("valid delete expected");
-    assert!(acc_2 == acc_0);
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("delete_with_proof spent time:\t{:.3}ms",dur_ms);
+
+    assert_eq!(acc_2, acc_0);
+    let start = Utc::now().timestamp_nanos();
     assert!(acc_1.verify_membership(&"c", &proof));
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("verify_membership spent time:\t{:.3}ms",dur_ms);
+  }
+
+  test_all_groups!(test_bench_delete, test_bench_delete_rsa2048, test_bench_delete_class,);
+  fn test_bench_delete<G: UnknownOrderGroup>() {
+    let start = Utc::now().timestamp_nanos();
+    let acc_0 = new_acc::<G, &'static str>(&["a", "b"]);
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("new_acc spent time:\t{}ms",dur_ms);
+
+    let start = Utc::now().timestamp_nanos();
+    let (acc_1, c_proof) = acc_0.clone().add_with_proof(&["c"]);
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("add_with_proof spent time:\t{}ms",dur_ms);
+
+    let start = Utc::now().timestamp_nanos();
+    let (acc_2, proof) = acc_1
+        .clone()
+        .delete_with_proof(&[("c", c_proof.witness)])
+        .expect("valid delete expected");
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("delete_with_proof spent time:\t{}ms",dur_ms);
+
+    assert!(acc_2 == acc_0);
+    let start = Utc::now().timestamp_nanos();
+    assert!(acc_1.verify_membership(&"c", &proof));
+    let fin = Utc::now().timestamp_nanos();
+    let dur_ms = (fin - start) as f64 * NANO_TO_MILLIS;
+    println!("verify_membership spent time:\t{}ms",dur_ms);
   }
 
   test_all_groups!(
@@ -538,8 +602,11 @@ mod tests {
 
   fn test_compute_individual_witnesses<G: UnknownOrderGroup>() {
     let acc = new_acc::<G, &'static str>(&["a", "b", "c"]);
+    println!("acc: {:#?}", acc);
     let witness_multiple = Witness(new_acc::<G, &'static str>(&["a"]));
+    println!("witness of one elem: {:#?}", witness_multiple);
     let witnesses = witness_multiple.compute_individual_witnesses(&["b", "c"]);
+    println!("witness of two elem: {:#?}", witnesses);
     for (elem, witness) in witnesses {
       assert_eq!(acc.value, G::exp(&witness.0.value, &hash_to_prime(elem)));
     }

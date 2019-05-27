@@ -41,21 +41,22 @@ impl TypeRep for Rsa2048 {
 
 impl Group for Rsa2048 {
   type Elem = Rsa2048Elem;
-  fn op_(modulus: &Integer, a: &Rsa2048Elem, b: &Rsa2048Elem) -> Rsa2048Elem {
-    Self::elem(int(&a.0 * &b.0) % modulus)
-  }
 
   fn id_(_: &Integer) -> Rsa2048Elem {
     Self::elem(1)
   }
 
-  fn inv_(modulus: &Integer, x: &Rsa2048Elem) -> Rsa2048Elem {
-    Self::elem(x.0.invert_ref(modulus).unwrap())
+  fn op_(modulus: &Integer, a: &Rsa2048Elem, b: &Rsa2048Elem) -> Rsa2048Elem {
+    Self::elem(int(&a.0 * &b.0) % modulus)
   }
 
   fn exp_(modulus: &Integer, x: &Rsa2048Elem, n: &Integer) -> Rsa2048Elem {
     // A side-channel resistant impl is 40% slower; we'll consider it in the future if we need to.
     Self::elem(x.0.pow_mod_ref(n, modulus).unwrap())
+  }
+
+  fn inv_(modulus: &Integer, x: &Rsa2048Elem) -> Rsa2048Elem {
+    Self::elem(x.0.invert_ref(modulus).unwrap())
   }
 }
 
@@ -86,21 +87,32 @@ mod tests {
 
   #[test]
   fn test_init() {
-    let _x = &Rsa2048::rep();
+    let x = Rsa2048::rep();
+    println!("Rsa2048::rep() - {:?}", x);
   }
 
   #[test]
   fn test_op() {
     let a = Rsa2048::op(&Rsa2048::elem(2), &Rsa2048::elem(3));
-    assert!(a == Rsa2048::elem(6));
+    assert_eq!(a, Rsa2048::elem(6));
+    println!("Rsa2048:  2*3= {:?}", a);
     let b = Rsa2048::op(&Rsa2048::elem(-2), &Rsa2048::elem(-3));
-    assert!(b == Rsa2048::elem(6));
+    assert_eq!(b, Rsa2048::elem(6));
+    let c = Rsa2048::op(&Rsa2048::elem(-2), &Rsa2048::elem(3));
+    println!("Rsa2048: -2*3={:?}", c);
   }
 
   /// Tests that `-x` and `x` are treated as the same element.
   #[test]
   fn test_cosets() {
-    assert!(Rsa2048::elem(3) == Rsa2048::elem(RSA2048_MODULUS.clone() - 3));
+    assert_eq!(Rsa2048::elem(3), Rsa2048::elem(RSA2048_MODULUS.clone() - 3));
+    println!("Rsa2048::elem(3): {:?} \n\
+              Rsa2048::elem(RSA2048_MODULUS.clone() - 3): {:?}\n\
+              Rsa2048::elem(-3): {:?}",
+             Rsa2048::elem(3),
+             Rsa2048::elem(RSA2048_MODULUS.clone() - 3),
+             Rsa2048::elem(-3),
+    );
     // TODO: Add a trickier coset test involving `op`.
   }
 
@@ -133,6 +145,7 @@ mod tests {
   fn test_inv() {
     let x = Rsa2048::elem(2);
     let inv = Rsa2048::inv(&x);
-    assert!(Rsa2048::op(&x, &inv) == Rsa2048::id());
+    dbg!(inv.clone());
+    assert_eq!(Rsa2048::op(&x, &inv), Rsa2048::id());
   }
 }
