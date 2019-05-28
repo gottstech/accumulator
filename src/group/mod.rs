@@ -16,6 +16,8 @@ mod ristretto;
 pub use ristretto::{Ristretto, RistrettoElem};
 mod rsa;
 pub use rsa::{Rsa2048, Rsa2048Elem};
+mod rsa3x5;
+pub use rsa3x5::{Rsa3x5, Rsa3x5Elem};
 
 /// A mathematical group.
 ///

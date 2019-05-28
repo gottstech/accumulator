@@ -23,8 +23,8 @@ const RSA2048_MODULUS_DECIMAL: &str =
   378636564391212010397122822120720357";
 
 lazy_static! {
-    pub static ref RSA2048_MODULUS: Integer = Integer::from_str(RSA2048_MODULUS_DECIMAL).unwrap();
-    pub static ref HALF_MODULUS: Integer = RSA2048_MODULUS.clone() / 2;
+    static ref RSA2048_MODULUS: Integer = Integer::from_str(RSA2048_MODULUS_DECIMAL).unwrap();
+    static ref HALF_MODULUS: Integer = RSA2048_MODULUS.clone() / 2;
 }
 
 #[allow(clippy::module_name_repetitions)]
