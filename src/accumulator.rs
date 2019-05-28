@@ -4,6 +4,7 @@ use crate::hash::hash_to_prime;
 use crate::proof::{Poe, Poke2};
 use crate::util::{divide_and_conquer, int, prime_hash_product, shamir_trick};
 use rug::Integer;
+use std::fmt;
 use std::hash::Hash;
 use std::marker::PhantomData;
 
@@ -29,12 +30,19 @@ pub enum AccError {
 // See https://doc.rust-lang.org/std/marker/struct.PhantomData.html#ownership-and-the-drop-check
 // for recommendations regarding phantom types. Note that we disregard the suggestion to use a
 // const reference in the phantom type parameter, which causes issues for the `Send` trait.
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq)]
 /// A cryptographic accumulator. Wraps a single unknown-order group element and phantom data
 /// representing the type `T` being hashed-to-prime and accumulated.
 pub struct Accumulator<G: UnknownOrderGroup, T> {
     phantom: PhantomData<T>,
     value: G::Elem,
+}
+
+// Manual debug impl required because don't want 'phantom: PhantomData'.
+impl<G: UnknownOrderGroup, T: Hash> fmt::Debug for Accumulator<G, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Accumulator{{ {:?} }}", self.value)
+    }
 }
 
 // Manual clone impl required because Rust's type inference is not good. See
@@ -48,9 +56,16 @@ impl<G: UnknownOrderGroup, T: Hash> Clone for Accumulator<G, T> {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 /// A witness to one or more values in an accumulator, represented as an accumulator.
 pub struct Witness<G: UnknownOrderGroup, T: Hash>(pub Accumulator<G, T>);
+
+// Manual debug impl required because want to be one line.
+impl<G: UnknownOrderGroup, T: Hash> fmt::Debug for Witness<G, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Witness( {:?} )", self.0)
+    }
+}
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 /// A succinct proof of membership (some element is in some accumulator).
@@ -387,7 +402,7 @@ impl<G: UnknownOrderGroup, T: Clone + Hash> Witness<G, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::group::{ClassGroup, Rsa2048};
+    use crate::group::{ClassGroup, Rsa100, Rsa2048};
     extern crate chrono;
     use self::tests::chrono::prelude::Utc;
     const NANO_TO_MILLIS: f64 = 1.0 / 1_000_000.0;
@@ -619,5 +634,169 @@ mod tests {
     fn test_compute_individual_witnesses_rsa2048() {
         // Class version takes too long for a unit test.
         test_compute_individual_witnesses::<Rsa2048>();
+    }
+
+    #[test]
+    fn demo_add_delete() {
+        let mut acc = Accumulator::<Rsa100, &'static str>::empty();
+        println!("Initial {:#x?}", acc);
+
+        let mut acc_proofs = vec![];
+        for str in vec!["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n"] {
+            let (new_acc, proof) = acc.add_with_proof(&[str]);
+            println!(
+                "\nAfter adding {}: {:#x?} \n  with proof: {:#0x?}",
+                str, new_acc, proof
+            );
+            assert!(new_acc.verify_membership(&str, &proof));
+            acc = new_acc.clone();
+            acc_proofs.push((str, new_acc, proof));
+        }
+
+        for (str,acc,proof) in acc_proofs.iter().rev() {
+
+            let new_acc = acc.clone().delete(&[(str, proof.witness.clone())]).unwrap();
+            println!(
+                "\nAfter deleting {}: {:#0x?}",
+                str, new_acc,
+            );
+        }
+
+        // batch
+
+        let mut acc = Accumulator::<Rsa100, &'static str>::empty();
+        acc = acc.add(&["a", "b", "c"]);
+        println!("\nInitial {:#x?}", acc);
+        let (new_acc, proof) = acc.add_with_proof(&["x", "y", "z"]);
+        println!(
+            "\nAfter adding {:?}: {:#x?} \n  with proof: {:#0x?}",
+            &["x", "y", "z"], new_acc, proof
+        );
+        assert!(new_acc.verify_membership_batch(&["x", "y", "z"], &proof));
+    }
+
+    #[test]
+    fn demo_subset_witness() {
+        let init_acc = Accumulator::<Rsa100, &'static str>::empty();
+        println!("Initial {:#x?}", init_acc);
+
+        let witness_all = Witness(init_acc.clone());
+        let user_witness = witness_all
+            .clone()
+            .compute_subset_witness(&["a", "b", "c"], &["a"])
+            .unwrap();
+        println!("\nUser witness of 'c': {:#x?}", user_witness.clone());
+
+        // check if 'user_witness' + 'witness_subnet' = 'init_acc' + 'witness_set'
+        let acc = init_acc.clone().add(&["a", "b", "c"]);
+        assert_eq!(user_witness.0.add(&["a"]), acc);
+
+        // --- do it again with not-empty initial witness
+
+        let witness_all = Witness(acc.clone());
+        let user_witness = witness_all
+            .clone()
+            .compute_subset_witness(&["x", "y", "z"], &["x"])
+            .unwrap();
+        println!("\nUser witness of 'x': {:#x?}", user_witness.clone());
+
+        // check if 'user_witness' + 'witness_subnet' = 'acc' + 'witness_set'
+        let acc = acc.clone().add(&["x", "y", "z"]);
+        assert_eq!(user_witness.0.add(&["x"]), acc);
+
+        // --- do it again with multiple elements in 'witness_subnet'
+
+        let witness_all = Witness(acc.clone());
+        let user_witness = witness_all
+            .clone()
+            .compute_subset_witness(&["l", "m", "n"], &["l", "m"])
+            .unwrap();
+        println!(
+            "\nUser witness of 'l' and 'm': {:#x?}",
+            user_witness.clone()
+        );
+
+        // check if 'user_witness' + 'witness_subnet' = 'acc' + 'witness_set'
+        let acc = acc.clone().add(&["l", "m", "n"]);
+        assert_eq!(user_witness.0.add(&["l", "m"]), acc);
+    }
+
+    #[test]
+    fn demo_individual_witnesses() {
+        let init_acc = Accumulator::<Rsa100, &'static str>::empty();
+        let acc = init_acc.clone().add(&["a", "b", "c"]);
+        println!("Initial {:#x?}", acc);
+
+        let witness_all = Witness(acc.clone());
+        let user_witness = witness_all
+            .clone()
+            .compute_subset_witness(&["x", "y", "z"], &["x", "y"])
+            .unwrap();
+        println!("\nUser witness of 'x' & 'y': {:#x?}", user_witness.clone());
+
+        // check if 'user_witness' + 'witness_subnet' = 'acc' + 'witness_set'
+        let new_acc = acc.clone().add(&["x", "y", "z"]);
+        assert_eq!(user_witness.clone().0.add(&["x", "y"]), new_acc);
+
+        let witnesses = user_witness.compute_individual_witnesses(&["x", "y"]);
+        for (str, witness) in witnesses {
+            println!("User witness of {}: {:#x?}", str, witness.clone());
+            assert_eq!(witness.clone().0.add(&[str]), new_acc);
+        }
+    }
+
+    #[test]
+    fn demo_update_membership_witness() {
+        let init_acc = Accumulator::<Rsa100, &'static str>::empty();
+        let acc = init_acc.clone().add(&["a", "b", "c"]);
+        println!("Initial {:#x?}", acc);
+
+        let witness = Witness(init_acc.clone().add(&["c", "d"]));
+        // from state &["c","d"] to state &["a","b","c"], need the following steps:
+        // 1) add "a","b"
+        // 2) delete "d"
+        // 3) but if this witness only care about "a" and not "b" (for example "b" is not his utxo),
+        //      he/she can do these steps:
+        //      1) add "b";
+        //      2) delete "d"
+
+        let witness_new = acc
+            .update_membership_witness(witness.clone(), &["a"], &["b"], &["d"])
+            .unwrap();
+        assert_eq!(witness_new.clone().0.add(&["a"]), acc);
+        println!("\nUpdated witness: {:#x?}", witness_new.clone());
+
+        // check if 'witness_new' = Witness('b', 'c')
+        let witness2 = Witness(init_acc.clone().add(&["b", "c"]));
+        assert_eq!(witness_new, witness2);
+
+        println!(
+            "\n----------------------------------------\n\
+             now do it again for multiple elements...\n"
+        );
+
+        let _first_acc = init_acc.clone().add(&["a", "b", "c", "l", "m", "n"]);
+        let witness = Witness(init_acc.clone().add(&["l", "m", "n"]));
+        //  ^ this witness is for ["a","b","c"]
+
+        let new_acc = init_acc.clone().add(&["a", "l", "x", "y", "z", "p", "q"]);
+        // ^ this means ["b","c", "m","n"] deleted, and ["x","y","z", "p","q"] added
+
+        // if this witness care about ["a","b","c"] and ["x","y","z"]
+        // note:
+        //      tracked_elems: can be thought as my latest utxo sets. my previous state is ["a","b","c"]
+        //      untracked_additions: new block included new utxo sets but not mine
+        //      untracked_deletions: new block included spent utxo sets but not mine
+        //      new_acc: new block accumulator
+        //
+        let witness_new = new_acc
+            .update_membership_witness(witness.clone(), &["a", "x", "y", "z"], &["p", "q"], &["m", "n"])
+            .unwrap();
+        assert_eq!(witness_new.clone().0.add(&["a", "x", "y", "z"]), new_acc);
+        println!("\nUpdated witness: {:#x?}", witness_new.clone());
+
+        // check if 'witness_new' = Witness('l', 'p', 'q')
+        let witness2 = Witness(init_acc.clone().add(&["l", "p", "q"]));
+        assert_eq!(witness_new, witness2);
     }
 }

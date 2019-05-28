@@ -6,8 +6,9 @@ use std::str::FromStr;
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-/// RSA-2048 group implementation. Modulus taken from
-/// [here](https://en.wikipedia.org/wiki/RSA_numbers#RSA-2048). **Note**: If you want to use
+/// RSA-2048 group implementation.
+/// Modulus taken from [here](https://en.wikipedia.org/wiki/RSA_numbers#RSA-2048).
+/// **Note**: If you want to use
 /// `Rsa2048` outside the context of this crate, be advised that it treats `x` and `-x` as the same
 /// element for sound proofs-of-exponentiation. See BBF (page 9).
 pub enum Rsa2048 {}

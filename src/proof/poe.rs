@@ -3,12 +3,20 @@ use crate::group::Group;
 use crate::hash::hash_to_prime;
 use crate::util::int;
 use rug::Integer;
+use std::fmt;
 
 #[allow(non_snake_case)]
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 /// Struct for NI-PoE.
 pub struct Poe<G: Group> {
     Q: G::Elem,
+}
+
+// Manual debug impl required because want to be one line.
+impl<G: Group> fmt::Debug for Poe<G> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "PoE {{ {:?} }}", self.Q)
+    }
 }
 
 impl<G: Group> Poe<G> {
@@ -34,7 +42,7 @@ impl<G: Group> Poe<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::group::{ElemFrom, Rsa2048, UnknownOrderGroup};
+    use crate::group::{ElemFrom, Rsa2048, Rsa100, UnknownOrderGroup};
     use crate::util::int;
 
     #[test]
@@ -61,6 +69,34 @@ mod tests {
             proof_2,
             Poe {
                 Q: Rsa2048::elem(1)
+            }
+        );
+    }
+
+    #[test]
+    fn test_poe_small_exp_rsa100() {
+        // 2^20 = 1048576
+        let base = Rsa100::unknown_order_elem();
+        let exp = int(20);
+        let result = Rsa100::elem(1_048_576);
+        let proof = Poe::<Rsa100>::prove(&base, &exp, &result);
+        assert!(Poe::verify(&base, &exp, &result, &proof));
+        assert_eq!(
+            proof,
+            Poe {
+                Q: Rsa100::elem(1)
+            }
+        );
+
+        // 2^35 = 34359738368
+        let exp_2 = int(35);
+        let result_2 = Rsa100::elem(34_359_738_368u64);
+        let proof_2 = Poe::<Rsa100>::prove(&base, &exp_2, &result_2);
+        assert!(Poe::verify(&base, &exp_2, &result_2, &proof_2));
+        assert_eq!(
+            proof_2,
+            Poe {
+                Q: Rsa100::elem(1)
             }
         );
     }
